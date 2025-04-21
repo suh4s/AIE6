@@ -1,0 +1,1 @@
+🚀 Exciting news! We've extended Llama-3's context from 8K to 80K using QLoRA in just 8 hours on a single GPU! 🎉 This model excels in tasks like NIHS and long-context understanding, thanks to only 3.5K synthetic samples from GPT-4. Full resources available here: https://github.com/FlagOpen/FlagEmbedding #AI #MachineLearning #Llama3

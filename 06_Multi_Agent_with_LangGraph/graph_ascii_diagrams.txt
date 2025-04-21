@@ -1,0 +1,199 @@
+===================================
+ASCII Diagram: Research Graph
+===================================
+
++---------------------------------+
+| ENTRY: fetch_summary            |
+| (Runs run_arxiv_tool)           |
+| - Invokes arxiv_tool            |
+| - Updates state['summary']      |
++---------------------------------+
+              |
+              V
++---------------------------------+
+| END                             |
++---------------------------------+
+
+
+===================================
+ASCII Diagram: Authoring Graph
+===================================
+
++---------------------------------+
+| ENTRY: supervisor               |
+| (AuthoringSupervisor Agent)     |
+| - Receives summary/comments     |
+| - Decides next step             |
++---------------------------------+
+       |      |
+       |      +----[ Route to X_Post_Drafter ]-->+---------------------------------+
+       |                                         | X_Post_Drafter Node             |
+       |                                         | - Reads summary/comments        |
+       |                                         | - Reads 'x_draft.txt' (if rev)  |
+       |                                         | - Writes/Overwrites 'x_draft.txt'|
+       |                                         +---------------------------------+
+       |                                                       |
+       |<--------------------[ Returns execution result ]------+          
+       |
+       +----[ Route to Conciseness_Editor ]->+---------------------------------+
+       |                                     | Conciseness_Editor Node         |
+       |                                     | - Reads 'x_draft.txt'           |
+       |                                     | - Edits for brevity/clarity     |
+       |                                     | - Overwrites 'x_draft.txt'      |
+       |                                     +---------------------------------+
+       |                                                   |
+       |<----------------[ Returns execution result ]------+          
+       |
+       +----[ Route to FINISH ]------------->+---------------------------------+
+                                            | END                             |
+                                            +---------------------------------+
+
+
+===================================
+ASCII Diagram: Verification Graph
+===================================
+
++---------------------------------+
+| ENTRY: supervisor               |
+| (VerificationSupervisor Agent)  |
+| - Receives draft context        |
+| - Decides next step (FactCheck)|
++---------------------------------+
+              |
+              | 1. Route to FactChecker
+              V
++---------------------------------+
+| FactChecker Node                |
+| - Reads summary from state      |
+| - Reads 'x_draft.txt'           |
+| - Compares facts                |
+| - Returns AIMessage:            |
+|   "ACCURATE" or "INACCURATE..." |
++---------------------------------+
+              |
+              | 2. Result returns to supervisor
+              V
++---------------------------------+
+| supervisor                      |
+| - Examines FactChecker's output |
+| - Decides next step             |
++---------------------------------+
+         |        |
+         |        +----[ Fact Check FAILED ("INACCURATE") ]-->+---------------------------------+
+         |                                                    | Route to FINISH                 |
+         |                                                    | (Triggers aggregation)          |
+         |                                                    +---------------------------------+
+         |                                                                  |
+         |                                                                  V
+         |        +----[ Fact Check PASSED ("ACCURATE") ]--->+---------------------------------+
+         |        |                                         | Route to X_StyleChecker         |
+         |        |                                         +---------------------------------+
+         |        |                                                       |
+         |        |                                                       V
+         |        |                                         +---------------------------------+
+         |        |                                         | X_StyleChecker Node             |
+         |        |                                         | - Reads 'x_draft.txt'           |
+         |        |                                         | - Checks length, tone, hashtags |
+         |        |                                         | - Returns AIMessage:            |
+         |        |                                         |   "STYLE OK" or "STYLE ISSUE..."|
+         |        |                                         +---------------------------------+
+         |        |                                                       |
+         |        |<----------------[ Result returns to supervisor ]------+          
+         |        |
+         |        +----[ After Style Check ]----------------->+---------------------------------+
+         |                                                    | Route to FINISH                 |
+         |                                                    | (Triggers aggregation)          |
+         |                                                    +---------------------------------+
+         |                                                                  |
+         V                                                                  V
++---------------------------------+                     +---------------------------------+
+| aggregate_results Node          |-------------------->| END                             |
+| (Aggregates checks, sets state) |                     +---------------------------------+
++---------------------------------+
+
+
+===================================
+ASCII Diagram: Final Graph (End-to-End Flow)
+===================================
+
++---------------------------------+           +---------------------------------+
+| ENTRY: Research Node            |---------->| Supervisor Node                 |
+| (runs run_research)             |           | (Wrapper + LLM Agent)           |
+| - Fetches Summary               |           | - Receives state from nodes     |
+| - Initializes State             |           | - Decides next route based on   |
++---------------------------------+           |   prompt, state (verified,    |
+              |                               |   rev_count, comments)          |
+              |<------------------------------+---------------------------------+
+              |                                             |
+(Control returns to Supervisor)                             | Route based on
+              |                                             | Supervisor's 'next' output
+              V                                             V
++---------------------------------+           +---------------------------------+
+| Authoring Node                  |<----------| Supervisor Node                 |
+| (runs run_authoring)            | Routes to | (Output: next="Authoring")      |
+| - Creates/Revises Draft         | Authoring |                                 |
++---------------------------------+           +---------------------------------+
+              |
+              |<------------------------------+
+              |                               |
+(Control returns to Supervisor)               |
+              |                               |
+              V                               V
++---------------------------------+           +---------------------------------+
+| Verification Node               |<----------| Supervisor Node                 |
+| (runs run_verification)         | Routes to | (Output: next="Verification")   |
+| - Runs Fact & Style Checks      | Verify    |                                 |
++---------------------------------+           +---------------------------------+
+              |
+              |<------------------------------+
+              |                               |
+(Control returns to Supervisor)               |
+              |                               |
+              V                               V
++---------------------------------+           +---------------------------------+
+| END                             |<----------| Supervisor Node                 |
+| (Graph Execution Finishes)      | Routes to | (Output: next="FINISH")         |
+|                                 | FINISH    |                                 |
++---------------------------------+           +---------------------------------+ 
+
+===============================================
+ASCII Diagram: Detailed Fact-Checking Flow
+(within Verification Graph)
+===============================================
+
++---------------------------------+
+| Verification Supervisor         |
+| (Receives control within        |
+|  VerificationGraph)             |
++---------------------------------+
+              |
+              | 1. Route to FactChecker
+              V
++---------------------------------+
+| FactChecker Node                |
+| - Reads summary from state      |
+| - Reads 'x_draft.txt'           |
+| - Compares facts                |
+| - Returns AIMessage:            |
+|   "ACCURATE" or "INACCURATE..." |
++---------------------------------+
+              |
+              | 2. Result returns to Supervisor
+              V
++---------------------------------+
+| Verification Supervisor         |
+| - Examines FactChecker's output |
++---------------------------------+
+              |
+              +----[ Is output "INACCURATE..."? ]----+
+              |                                     |
+      YES     |                                     | NO
+              V                                     V
++----------------------------+        +---------------------------------+
+| 3a. Route to FINISH        |        | 3b. Route to X_StyleChecker     |
+|    (VerificationGraph ends,|        |    (Proceed with style check)   |
+|     triggering aggregation)|        +---------------------------------+
++----------------------------+                      |
+                                                    | 4. Style Check proceeds...
+                                                    V
+                                          (To StyleChecker Node) 
